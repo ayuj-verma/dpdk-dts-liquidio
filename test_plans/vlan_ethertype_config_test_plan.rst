@@ -65,7 +65,7 @@ testpmd> start
 
 2) change VLAN TPIDs to 0xA100,
 
-testpmd> vlan set inner tpid 0xA100 0
+testpmd> vlan set outer tpid 0xA100 0
 
 3) send a packet with VLAN TPIDs = 0xA100, verify it can be recognized as vlan packet.
 
@@ -108,7 +108,7 @@ Verify that the VLAN packet can be received in port ``B`` and TPID is 0x8100
 
 4) Change VLAN TPID to 0xA100 on port ``0``
 
-testpmd> vlan set inner tpid 0xA100 0
+testpmd> vlan set outer tpid 0xA100 0
 
 5) send 1 packet with VLAN TPID 0xA100 and VLAN Tag 16 on port ``A``, 
 Verify that the VLAN packet can be received in port ``B`` and TPID is 0xA100
@@ -136,7 +136,7 @@ Verify that packet received in port ``B`` without VLAN Tag Identifier
 
 3) Change VLAN TPID to 0xA100 on port ``0``
 
-testpmd> vlan set inner tpid 0xA100 0
+testpmd> vlan set outer tpid 0xA100 0
 
 4) send 1 packet with VLAN TPID 0xA100 and VLAN Tag 16 on port ``A``, 
 Verify that packet received in port ``B`` without VLAN Tag Identifier
@@ -169,7 +169,7 @@ Verify that packet received in port ``B`` with VLAN Tag Identifier 16 and TPID i
 
 4) Change VLAN TPID to 0xA100 on port ``1``
 
-testpmd> vlan set inner tpid 0xA100 1
+testpmd> vlan set outer tpid 0xA100 1
 
 5)send 1 packet without VLAN Tag Identifier on port ``A``,
 Verify that packet received in port ``B`` with VLAN Tag Identifier 16 and TPID is 0xA100.

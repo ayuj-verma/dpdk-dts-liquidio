@@ -885,7 +885,7 @@ def remove_from_list(host):
     Remove network device object from global structure
     Parameter will by host ip
     """
-    for nic in NICS_LIST:
+    for nic in NICS_LIST[:]:
         if host == nic['host']:
             NICS_LIST.remove(nic)
 

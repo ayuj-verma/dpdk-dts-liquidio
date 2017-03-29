@@ -31,7 +31,7 @@
 
 import os
 import re
-from settings import TIMEOUT,PROTOCOL_PACKET_SIZE
+from settings import TIMEOUT, PROTOCOL_PACKET_SIZE, get_nic_driver
 from utils import create_mask
 
 
@@ -101,6 +101,12 @@ class PmdOutput():
 
     def start_testpmd(self, cores, param='', eal_param='', socket=0):
         # in dpdk2.0 need used --txqflags param to open hardware features
+        default_param = {'i40evf': ' --crc-strip'}
+        for (pci_bus, pci_id) in self.dut.pci_devices_info:
+            driver = get_nic_driver(pci_id)
+            if default_param.has_key(driver):
+                if default_param[driver] not in param:
+                    param += default_param[driver]
         if "--txqflags" not in param:
             param += " --txqflags=0"
 
@@ -192,6 +198,7 @@ class PmdOutput():
         Get the allmulticast mode of port.
         """
         return self.get_detail_from_port_info("Allmulticast mode: ", "\S+", port_id)
+
     def check_tx_bytes(self, tx_bytes, exp_bytes = 0):
         """
         fortville nic will send lldp packet when nic setup with testpmd.
@@ -199,6 +206,7 @@ class PmdOutput():
         for check tx_bytes count right
         """
         return not (tx_bytes - exp_bytes) % PROTOCOL_PACKET_SIZE['lldp']
+
     def get_port_vlan_offload(self, port_id):
         """
         Function: get the port vlan settting info.

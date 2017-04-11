@@ -407,4 +407,29 @@ Test Case 14: Promisc mode
    received by VF0
 
 
+Test Case 14: Set Vlan filter for VF from PF 
+============================================ 
+1. Start VF0 testpmd, set it in rxonly forwarding mode, enable verbose output
+
+2. Send packet without vlan id to random MAC, check VF0 can receive packet
+
+3. Add vlan filter id as random 1~4095 for VF0 from PF::
+        testpmd> rx_vlan add id port 0 vf 1 
+
+4. Send packet from tester to VF0 with wrong vlan id to random MAC, check VF0 
+   can't receive packet
+
+5. Send packet from tester to VF0 with configured vlan id to random MAC, check 
+   VF0 can receive packet
+
+6. Remove vlan filter id for VF0 from PF::
+        testpmd> rx_vlan rm id port 0 vf 1 
+        
+7. Send packet from tester to VF0 with wrong vlan id to random MAC, check VF0 
+   can receive packet
+
+8. Send packet from tester to VF0 with configured vlan id to random MAC, check 
+   VF0 can receive packet
+
+9. Send packet without vlan id to random MAC, check VF0 can receive packet
 

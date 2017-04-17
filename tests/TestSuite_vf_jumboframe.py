@@ -60,7 +60,7 @@ class TestVfJumboFrame(TestCase):
             for port in ports:
                 netdev = self.dut.ports_info[port]['port']
                 driver_now = netdev.get_nic_driver()
-                if driver == "":
+                if driver == None:
                     driver = netdev.default_driver
                 if driver != driver_now:
                     netdev.bind_driver(driver=driver)
@@ -118,18 +118,20 @@ class TestVfJumboFrame(TestCase):
 
     def destroy_vm_env(self):
         if getattr(self, 'vm', None):
-            self.vm_dut.kill_all()
+            if getattr(self, 'vm_dut', None):
+                self.vm_dut.kill_all()
             self.vm_testpmd = None
             self.vm_dut_ports = None
             # destroy vm0
             self.vm.stop()
+            self.dut.virt_exit()
+            time.sleep(3)
             self.vm = None
 
-        if getattr(self, 'used_dut_port', None):
+        if getattr(self, 'used_dut_port', None) != None:
             self.dut.destroy_sriov_vfs_by_port(self.used_dut_port)
             self.used_dut_port = None
-
-        self.bind_nic_driver(self.dut_ports[:1], driver="igb_uio")
+        self.bind_nic_driver(self.dut_ports[:1], driver='default')
 
         self.env_done = False
 
@@ -172,11 +174,16 @@ class TestVfJumboFrame(TestCase):
 
         if received:
             self.verify((rx_pkts == 1) and (tx_pkts == 1), "Packet forward assert error")
+
             if self.kdriver == "ixgbe":
                 self.verify((rx_bytes + 4) == pktsize, "Rx packet size should be packet size - 4")
             else:
                 self.verify(rx_bytes == pktsize, "Tx packet size should be equal to packet size")
-            self.verify((tx_bytes + 4) == pktsize, "Tx packet size should be packet size - 4")
+
+            if self.kdriver == "igb":
+                self.verify(tx_bytes == pktsize, "Tx packet size should be packet size")
+            else:
+                self.verify((tx_bytes + 4) == pktsize, "Tx packet size should be packet size - 4")
         else:
             self.verify(rx_err == 1 or tx_pkts == 0, "Packet drop assert error")
 
@@ -185,15 +192,10 @@ class TestVfJumboFrame(TestCase):
         This case aims to test transmitting normal size packet without jumbo enable
         """
         # should enable jumbo on host
-        if self.kdriver == "ixgbe":
-            self.dutobj = self.dut.ports_info[self.port]['port']
-            self.dutobj.enable_jumbo(framesize=ETHER_STANDARD_MTU)
-            time.sleep(2)
+        self.dutobj = self.dut.ports_info[self.port]['port']
+        self.dutobj.enable_jumbo(framesize=ETHER_STANDARD_MTU)
 
-        if self.kdriver == "i40e":
-            self.vm_testpmd.start_testpmd("Default", "--max-pkt-len=%d --port-topology=loop --crc-strip --txqflags=0x0" % (ETHER_STANDARD_MTU))
-        else:
-            self.vm_testpmd.start_testpmd("Default", "--max-pkt-len=%d --port-topology=loop --txqflags=0x0" % (ETHER_STANDARD_MTU))
+        self.vm_testpmd.start_testpmd("Default", "--max-pkt-len=%d --port-topology=loop --txqflags=0x0" % (ETHER_STANDARD_MTU))
 
         self.vm_testpmd.execute_cmd("set fwd mac")
         self.vm_testpmd.execute_cmd("start")
@@ -210,15 +212,10 @@ class TestVfJumboFrame(TestCase):
         packet forwrding should be support correct.
         """
         # should enable jumbo on host
-        if self.kdriver == "ixgbe":
-            self.dutobj = self.dut.ports_info[self.port]['port']
-            self.dutobj.enable_jumbo(framesize=ETHER_JUMBO_FRAME_MTU)
-            time.sleep(2)
+        self.dutobj = self.dut.ports_info[self.port]['port']
+        self.dutobj.enable_jumbo(framesize=ETHER_JUMBO_FRAME_MTU)
 
-        if self.kdriver == "i40e":
-            self.vm_testpmd.start_testpmd("Default", "--max-pkt-len=%d --port-topology=loop --crc-strip --txqflags=0x0" % (ETHER_JUMBO_FRAME_MTU))
-        else:
-            self.vm_testpmd.start_testpmd("Default", "--max-pkt-len=%s --port-topology=loop --txqflags=0x0" % (ETHER_JUMBO_FRAME_MTU))
+        self.vm_testpmd.start_testpmd("Default", "--max-pkt-len=%d --port-topology=loop --txqflags=0x0" % (ETHER_JUMBO_FRAME_MTU))
 
         self.vm_testpmd.execute_cmd("set fwd mac")
         self.vm_testpmd.execute_cmd("start")
@@ -235,20 +232,24 @@ class TestVfJumboFrame(TestCase):
         jumbo frame support.
         """
         # should enable jumbo on host
-        if self.kdriver == "ixgbe":
-            self.dutobj = self.dut.ports_info[self.port]['port']
-            self.dutobj.enable_jumbo(framesize=ETHER_STANDARD_MTU)
-            time.sleep(2)
+        self.dutobj = self.dut.ports_info[self.port]['port']
+        self.dutobj.enable_jumbo(framesize=ETHER_STANDARD_MTU)
 
-        if self.kdriver == "i40e":
-            self.vm_testpmd.start_testpmd("Default", "--port-topology=loop --crc-strip --txqflags=0x0" )
-        else:
-            self.vm_testpmd.start_testpmd("Default", "--port-topology=loop --txqflags=0x0")
+        self.vm_testpmd.start_testpmd("Default", "--port-topology=loop --txqflags=0x0" )
 
         self.vm_testpmd.execute_cmd("set fwd mac")
         self.vm_testpmd.execute_cmd("start")
 
-        self.jumboframes_send_packet(ETHER_STANDARD_MTU + 1, False)
+        # On igb, for example i350, refer to :DPDK-1117
+        # For PF, the max-pkt-len = mtu + 18 + 4(VLAN header len).
+        # For VF, the real max-pkt-len = the given max-pkt-len + 4(VLAN header len).
+        # This behavior is levelraged from kernel driver.
+        # And it means max-pkt-len is always 4 bytes longer than assumed.
+
+        if self.kdriver == "igb":
+            self.jumboframes_send_packet(ETHER_STANDARD_MTU + 1 + 4, False)
+        else:
+            self.jumboframes_send_packet(ETHER_STANDARD_MTU + 1, False)
 
         self.vm_testpmd.execute_cmd("stop")
         self.vm_testpmd.quit()
@@ -259,15 +260,10 @@ class TestVfJumboFrame(TestCase):
         packet can be forwarded correct.
         """
         # should enable jumbo on host
-        if self.kdriver == "ixgbe":
-            self.dutobj = self.dut.ports_info[self.port]['port']
-            self.dutobj.enable_jumbo(framesize=ETHER_JUMBO_FRAME_MTU)
-            time.sleep(2)
+        self.dutobj = self.dut.ports_info[self.port]['port']
+        self.dutobj.enable_jumbo(framesize=ETHER_JUMBO_FRAME_MTU)
 
-        if self.kdriver == "i40e":
-            self.vm_testpmd.start_testpmd("Default", "--max-pkt-len=%d --port-topology=loop --crc-strip --txqflags=0x0" % (ETHER_JUMBO_FRAME_MTU))
-        else:
-            self.vm_testpmd.start_testpmd("Default", "--max-pkt-len=%s --port-topology=loop --txqflags=0x0" % (ETHER_JUMBO_FRAME_MTU))
+        self.vm_testpmd.start_testpmd("Default", "--max-pkt-len=%d --port-topology=loop --txqflags=0x0" % (ETHER_JUMBO_FRAME_MTU))
 
         self.vm_testpmd.execute_cmd("set fwd mac")
         self.vm_testpmd.execute_cmd("start")
@@ -285,20 +281,19 @@ class TestVfJumboFrame(TestCase):
         packet which the length bigger than MTU can not be forwarded.
         """
         # should enable jumbo on host
-        if self.kdriver == "ixgbe":
-            self.dutobj = self.dut.ports_info[self.port]['port']
-            self.dutobj.enable_jumbo(framesize=ETHER_JUMBO_FRAME_MTU)
-            time.sleep(2)
+        self.dutobj = self.dut.ports_info[self.port]['port']
+        self.dutobj.enable_jumbo(framesize=ETHER_JUMBO_FRAME_MTU)
 
-        if self.kdriver == "i40e":
-            self.vm_testpmd.start_testpmd("Default", "--max-pkt-len=%d --port-topology=loop --crc-strip --txqflags=0x0" % (ETHER_JUMBO_FRAME_MTU))
-        else:
-            self.vm_testpmd.start_testpmd("Default", "--max-pkt-len=%s --port-topology=loop --txqflags=0x0" % (ETHER_JUMBO_FRAME_MTU))
+        self.vm_testpmd.start_testpmd("Default", "--max-pkt-len=%d --port-topology=loop --txqflags=0x0" % (ETHER_JUMBO_FRAME_MTU))
 
         self.vm_testpmd.execute_cmd("set fwd mac")
         self.vm_testpmd.execute_cmd("start")
 
-        self.jumboframes_send_packet(ETHER_JUMBO_FRAME_MTU + 1, False)
+        # On 1G NICs, when the jubmo frame MTU set as 9000, the software adjust it to 9004.
+        if self.kdriver == "igb":
+            self.jumboframes_send_packet(ETHER_JUMBO_FRAME_MTU + 4 + 1, False)
+        else:
+            self.jumboframes_send_packet(ETHER_JUMBO_FRAME_MTU + 1, False)
 
         self.vm_testpmd.execute_cmd("stop")
         self.vm_testpmd.quit()
@@ -307,8 +302,7 @@ class TestVfJumboFrame(TestCase):
         """
         Run after each test case.
         """
-        self.vm_dut.kill_all()
-        pass
+        self.destroy_vm_env()
 
     def tear_down_all(self):
         """

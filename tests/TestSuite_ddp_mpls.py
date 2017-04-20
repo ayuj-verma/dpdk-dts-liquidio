@@ -134,7 +134,7 @@ class Testddp_mpls(TestCase):
  
     def mpls_test(self, port='pf', pkt='udp'):
         """
-        Send mpls packet to dut, reveive packet from configured queue.
+        Send mpls packet to dut, receive packet from configured queue.
         Input: port type, packet type
         """        
         pkts = []
@@ -190,7 +190,7 @@ class Testddp_mpls(TestCase):
 
     def test_mpls_udp_pf(self):
         """
-        MPLS is supported by NVM with profile updated. Send mpls upd packet to PF, 
+        MPLS is supported by NVM with profile updated. Send mpls udp packet to PF,
         check PF could receive packet using configured queue, checksum is good.
         """
         self.load_profile()
@@ -208,7 +208,7 @@ class Testddp_mpls(TestCase):
     
     def test_mpls_udp_vf(self):
         """
-        MPLS is supported by NVM with profile updated. Send mpls upd packet to VF, 
+        MPLS is supported by NVM with profile updated. Send mpls udp packet to VF,
         check VF could receive packet using configured queue, checksum is good.
         """
         self.load_profile()

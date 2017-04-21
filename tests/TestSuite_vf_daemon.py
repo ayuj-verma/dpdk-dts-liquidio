@@ -634,6 +634,63 @@ class Testvf_daemon(TestCase):
 
         self.vm0_testpmd.quit()
         self.dut_testpmd.quit()
+    
+    
+    def test_vlan_filter(self):
+        """
+        Add/Remove vlan filter for a VF from PF
+        """
+        self.dut_testpmd.start_testpmd("Default", "--port-topology=chained")
+        self.vm0_testpmd.start_testpmd(VM_CORES_MASK, '--port-topology=chained')
+
+        self.vm0_testpmd.execute_cmd('set fwd rxonly')
+        self.vm0_testpmd.execute_cmd('set verbose 1')
+        self.vm0_testpmd.execute_cmd('start')
+
+        wrong_mac = '9E:AC:72:49:43:11'
+        out = self.send_and_pmdout(wrong_mac)
+        self.verify("dst=%s" % wrong_mac in out,
+            "Failed to receive untagged packet!!!")
+        random_vlan = random.randint(1, MAX_VLAN)
+        out = self.send_and_pmdout(wrong_mac, random_vlan)
+        self.verify("dst=%s" % wrong_mac in out,
+            "Failed to receive packet with vlan id!!!")
+        self.verify("VLAN tci=%s" % hex(random_vlan) in out,
+            "Failed to receive packet with vlan id!!!")
+        random_vlan = random.randint(2, MAX_VLAN - 1)
+        rx_vlans = [1, random_vlan, MAX_VLAN]
+        for rx_vlan in rx_vlans:
+            self.dut_testpmd.execute_cmd('rx_vlan add %s port 0 vf 1'% rx_vlan)
+            time.sleep(1)
+            out = self.send_and_pmdout(wrong_mac, rx_vlan)
+            self.verify("dst=%s" % wrong_mac in out,
+                "Failed to enable vlan filter!!!")
+            self.verify("VLAN tci=%s" % hex(rx_vlan) in out,
+                "Failed to receive packet with vlan id!!!")
+            wrong_rx_vlan = (rx_vlan + 1) % 4096
+            #Packet for vlan id 0 is equal to untagged packet for this case
+            if wrong_rx_vlan == 0:
+                wrong_rx_vlan = random.randint(1, MAX_VLAN - 1)
+            out = self.send_and_pmdout(wrong_mac, wrong_rx_vlan)
+            self.verify("dst=%s" % wrong_mac not in out,
+                "Failed to enable vlan filter!!!")
+            self.dut_testpmd.execute_cmd('rx_vlan rm %s port 0 vf 1'% rx_vlan)
+            out = self.send_and_pmdout(wrong_mac, rx_vlan)
+            self.verify("dst=%s" % wrong_mac in out,
+                "Failed to disable vlan filter!!!")
+            self.verify("VLAN tci=%s" % hex(rx_vlan) in out,
+                "Failed to receive packet with vlan id!!!")
+            out = self.send_and_pmdout(wrong_mac, wrong_rx_vlan)
+            self.verify("dst=%s" % wrong_mac in out,
+                "Failed to disable vlan filter!!!")
+            self.verify("VLAN tci=%s" % hex(wrong_rx_vlan) in out,
+                "Failed to receive packet with vlan id!!!")
+        out = self.send_and_pmdout(wrong_mac)
+        self.verify("dst=%s" % wrong_mac in out,
+            "Failed to receive untagged packet!!!")
+
+        self.vm0_testpmd.quit()
+        self.dut_testpmd.quit()
 
 
     def tear_down(self):

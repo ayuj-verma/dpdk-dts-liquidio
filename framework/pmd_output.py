@@ -101,12 +101,6 @@ class PmdOutput():
 
     def start_testpmd(self, cores, param='', eal_param='', socket=0):
         # in dpdk2.0 need used --txqflags param to open hardware features
-        default_param = {'i40evf': ' --crc-strip'}
-        for (pci_bus, pci_id) in self.dut.pci_devices_info:
-            driver = get_nic_driver(pci_id)
-            if default_param.has_key(driver):
-                if default_param[driver] not in param:
-                    param += default_param[driver]
         if "--txqflags" not in param:
             param += " --txqflags=0"
 

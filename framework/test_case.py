@@ -367,5 +367,9 @@ class TestCase(object):
             bitrate *= 40
         elif driver == 'thunder-nicvf':
             bitrate *= 10
+        elif driver == "liquidio":
+            bitrate *= 10  # 10 Gb NICs
+        elif driver == "liquidio_vf":
+            bitrate *= 10  # 10 Gb NICs
 
         return bitrate * num_ports / 8 / (frame_size + 20)

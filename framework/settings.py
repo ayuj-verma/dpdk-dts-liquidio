@@ -93,6 +93,8 @@ NICS = {
     'fortville_25g': '8086:158b',
     'cavium_a034': '177d:a034',
     'cavium_0011': '177d:0011',
+    'liquidio':'177d:9702',
+    'liquidio_vf':'177d:9712'
 }
 
 DRIVERS = {
@@ -140,6 +142,8 @@ DRIVERS = {
     'fortville_25g': 'i40e',
     'cavium_a034': 'thunder-nicvf',
     'cavium_0011': 'thunder-nicvf',
+    'liquidio':'liquidio',
+    'liquidio_vf':'liquidio_vf'
 }
 
 """

@@ -218,7 +218,14 @@ class TestPmd(TestCase,IxiaPacketGenerator):
             port_mask = utils.create_mask([self.dut_ports[0], self.dut_ports[1]])
 
             #self.pmdout.start_testpmd("all", "--coremask=%s --rxq=%d --txq=%d --portmask=%s" % (core_mask, queues, queues, port_mask))
-            self.pmdout.start_testpmd(core_config, " --rxq=%d --txq=%d --portmask=%s --rss-ip --txrst=32 --txfreet=32 --txd=128" % (queues, queues, port_mask), socket=self.ports_socket)
+            #Configuring testpmd rxd,txd values and other parameters to get best perf. for liquidio_vf nic
+            if self.nic == "liquidio_vf":
+                    if queues > 1:
+                            self.pmdout.start_testpmd(core_config, " --rxq=%d --txq=%d --portmask=%s --txd=512 --rxd=512 --burst=512 --mbcache=512 --disable-rss" % (queues, queues, port_mask), socket=self.ports_socket)
+                    else:
+                            self.pmdout.start_testpmd(core_config, " --rxq=%d --txq=%d --portmask=%s --txd=512 --rxd=512 --burst=512 --mbcache=512" % (queues, queues, port_mask), socket=self.ports_socket)
+            else:
+                    self.pmdout.start_testpmd(core_config, " --rxq=%d --txq=%d --portmask=%s --rss-ip --txrst=32 --txfreet=32 --txd=128" % (queues, queues, port_mask), socket=self.ports_socket)
             command_line = self.pmdout.get_pmd_cmd()
 
             info = "Executing PMD using %s\n" % test_cycle['cores']

@@ -39,7 +39,7 @@ import re
 import time
 from test_case import TestCase
 from time import sleep
-from settings import HEADER_SIZE
+from settings import HEADER_SIZE, get_nic_driver
 from pmd_output import PmdOutput
 from etgen import IxiaPacketGenerator
 
@@ -57,7 +57,9 @@ class TestPmd(TestCase,IxiaPacketGenerator):
 
         self.rxfreet_values = [0, 8, 16, 32, 64, 128]
 
-        self.test_cycles = [{'cores': '1S/2C/1T', 'Mpps': {}, 'pct': {}}
+        self.test_cycles = [{'cores': '1S/2C/1T', 'Mpps': {}, 'pct': {}},
+                            {'cores': '1S/4C/1T', 'Mpps': {}, 'pct': {}},
+                            {'cores': '1S/8C/1T', 'Mpps': {}, 'pct': {}}
                             ]
 
         self.table_header = ['Frame Size']
@@ -68,9 +70,14 @@ class TestPmd(TestCase,IxiaPacketGenerator):
 
         self.blacklist = ""
 
-        # Update config file and rebuild to get best perf on FVL
-        self.dut.send_expect("sed -i -e 's/CONFIG_RTE_LIBRTE_I40E_16BYTE_RX_DESC=n/CONFIG_RTE_LIBRTE_I40E_16BYTE_RX_DESC=y/' ./config/common_base", "#", 20)
-        self.dut.build_install_dpdk(self.target)
+        # Adding check for driver, rebuild will only initiate if nic_type driver is i40e
+        for port in self.dut.ports_info:
+            pci_bus = port['pci']
+            pci_id = port['type']
+	    if "i40e" in get_nic_driver(pci_id):
+                # Update config file and rebuild to get best perf on FVL
+        	self.dut.send_expect("sed -i -e 's/CONFIG_RTE_LIBRTE_I40E_16BYTE_RX_DESC=n/CONFIG_RTE_LIBRTE_I40E_16BYTE_RX_DESC=y/' ./config/common_base", "#", 20)
+	        self.dut.build_install_dpdk(self.target)
 
         # Based on h/w type, choose how many ports to use
         self.dut_ports = self.dut.get_ports()
@@ -87,24 +94,16 @@ class TestPmd(TestCase,IxiaPacketGenerator):
         Run before each test case.
         """
         pass
-
-    def test_perf_single_core_performance(self):
-        """
-        Run single core performance
-        """
-        if len(self.dut_ports) >= 4:
-            self.pmd_performance_4ports()
-        else:
-            self.verify(len(self.dut_ports) >= 2, "Insufficient ports for 2 ports performance test")
-            self.pmd_performance_2ports()
         
-    def pmd_performance_4ports(self):
+    def test_perf_liquidio_vf_pmd_performance_4ports(self):
         """
-        PMD Performance Benchmarking with 4 ports.
+        PMD Performance Benchmarking with 4 ports for liqudio_vf.
         """
         all_cores_mask = utils.create_mask(self.dut.get_core_list("all"))
 
         # prepare traffic generator input
+        self.verify(len(self.dut_ports) >= 4,
+                    "Insufficient ports for 4 ports performance")            
         tgen_input = []
 
         tgen_input.append((self.tester.get_local_port(self.dut_ports[0]),
@@ -135,7 +134,14 @@ class TestPmd(TestCase,IxiaPacketGenerator):
             core_mask = utils.create_mask(core_list)
             port_mask = utils.create_mask(self.dut.get_ports())
 
-            self.pmdout.start_testpmd(core_config, " --rxq=%d --txq=%d --portmask=%s --rss-ip --txrst=32 --txfreet=32 --txd=128 --txqflags=0xf01" % (queues, queues, port_mask), socket=self.ports_socket)
+            #Configuring testpmd rxd,txd values and other parameters to get best perf. for liquidio_vf nic
+            if self.nic == "liquidio_vf":
+                    if queues > 1:
+                            self.pmdout.start_testpmd(core_config, " --rxq=%d --txq=%d --portmask=%s --txd=512 --rxd=512 --burst=512 --mbcache=512 --disable-rss" % (queues, queues, port_mask), socket=self.ports_socket)
+                    else:
+                            self.pmdout.start_testpmd(core_config, " --rxq=%d --txq=%d --portmask=%s --txd=512 --rxd=512 --burst=512 --mbcache=512" % (queues, queues, port_mask), socket=self.ports_socket)
+            else:
+                    self.pmdout.start_testpmd(core_config, " --rxq=%d --txq=%d --portmask=%s --rss-ip --txrst=32 --txfreet=32 --txd=128" % (queues, queues, port_mask), socket=self.ports_socket)
 	    command_line = self.pmdout.get_pmd_cmd()
 
             info = "Executing PMD using %s\n" % test_cycle['cores']
@@ -186,7 +192,7 @@ class TestPmd(TestCase,IxiaPacketGenerator):
 
         self.result_table_print()
 
-    def pmd_performance_2ports(self):
+    def test_perf_liquidio_vf_pmd_performance_2ports(self):
         """
         PMD Performance Benchmarking with 2 ports.
         """
@@ -194,14 +200,16 @@ class TestPmd(TestCase,IxiaPacketGenerator):
         all_cores_mask = utils.create_mask(self.dut.get_core_list("all"))
 
         # prepare traffic generator input
+        self.verify(len(self.dut_ports) >= 2, "Insufficient ports for 2 ports performance test")
         tgen_input = []
         tgen_input.append((self.tester.get_local_port(self.dut_ports[0]),
                            self.tester.get_local_port(self.dut_ports[1]),
-                           "test.pcap"))
+                           ("test-%s.pcap"%self.tester.get_local_port(self.dut_ports[0]))))
         tgen_input.append((self.tester.get_local_port(self.dut_ports[1]),
                            self.tester.get_local_port(self.dut_ports[0]),
-                           "test.pcap"))
-
+                           ("test-%s.pcap"%self.tester.get_local_port(self.dut_ports[1]))))
+        mac_port0 = self.dut.get_mac_address(self.dut_ports[0])
+        mac_port1 = self.dut.get_mac_address(self.dut_ports[1])
         # run testpmd for each core config
         for test_cycle in self.test_cycles:
             core_config = test_cycle['cores']
@@ -218,7 +226,14 @@ class TestPmd(TestCase,IxiaPacketGenerator):
             port_mask = utils.create_mask([self.dut_ports[0], self.dut_ports[1]])
 
             #self.pmdout.start_testpmd("all", "--coremask=%s --rxq=%d --txq=%d --portmask=%s" % (core_mask, queues, queues, port_mask))
-            self.pmdout.start_testpmd(core_config, " --rxq=%d --txq=%d --portmask=%s --rss-ip --txrst=32 --txfreet=32 --txd=128" % (queues, queues, port_mask), socket=self.ports_socket)
+            #Configuring testpmd rxd,txd values and other parameters to get best perf. for liquidio_vf nic
+            if self.nic == "liquidio_vf":
+                    if queues > 1:
+                            self.pmdout.start_testpmd(core_config, " --rxq=%d --txq=%d --portmask=%s --txd=512 --rxd=512 --burst=512 --mbcache=512 --disable-rss" % (queues, queues, port_mask), socket=self.ports_socket)
+                    else:
+                            self.pmdout.start_testpmd(core_config, " --rxq=%d --txq=%d --portmask=%s --txd=512 --rxd=512 --burst=512 --mbcache=512" % (queues, queues, port_mask), socket=self.ports_socket)
+            else:
+                    self.pmdout.start_testpmd(core_config, " --rxq=%d --txq=%d --portmask=%s --rss-ip --txrst=32 --txfreet=32 --txd=128" % (queues, queues, port_mask), socket=self.ports_socket)
             command_line = self.pmdout.get_pmd_cmd()
 
             info = "Executing PMD using %s\n" % test_cycle['cores']
@@ -235,7 +250,10 @@ class TestPmd(TestCase,IxiaPacketGenerator):
                 self.logger.info("Running with frame size %d " % frame_size)
                 payload_size = frame_size - self.headers_size
                 self.tester.scapy_append(
-                    'wrpcap("test.pcap", [Ether(src="52:00:00:00:00:00")/IP(src="1.2.3.4",dst="1.1.1.1")/TCP()/("X"*%d)])' % payload_size)
+                    'wrpcap("test-%s.pcap", [Ether(dst="%s", src="52:00:00:00:00:00")/IP()/UDP()/("X"*%d)])' % ( self.tester.get_local_port(self.dut_ports[0]), mac_port0, payload_size))
+                self.tester.scapy_execute()
+                self.tester.scapy_append(
+                    'wrpcap("test-%s.pcap", [Ether(dst="%s", src="52:00:00:00:00:00")/IP()/UDP()/("X"*%d)])' % ( self.tester.get_local_port(self.dut_ports[1]), mac_port1, payload_size))
                 self.tester.scapy_execute()
 
                 # run traffic generator
@@ -277,23 +295,41 @@ class TestPmd(TestCase,IxiaPacketGenerator):
 
         port_mask = utils.create_mask([self.dut_ports[0], self.dut_ports[1]])
 
-        for rxfreet_value in self.rxfreet_values:
+        if self.nic == "liquidio_vf":
+                self.pmdout.start_testpmd("1S/2C/1T", "--portmask=%s --enable-rx-cksum --disable-hw-vlan --disable-rss --rxd=1024 --txd=1024" % (port_mask), socket=self.ports_socket)
+                self.dut.send_expect("set fwd csum", "testpmd> ")
+                self.dut.send_expect("start", "testpmd> ")
 
-            self.pmdout.start_testpmd("1S/2C/1T", "--portmask=%s --enable-rx-cksum --disable-hw-vlan --disable-rss --rxd=1024 --txd=1024 --rxfreet=%d" % ( port_mask, rxfreet_value), socket=self.ports_socket)
-            self.dut.send_expect("set fwd csum", "testpmd> ")
-            self.dut.send_expect("start", "testpmd> ")
+                self.send_packet(self.frame_sizes[0], checksum_test=True)
 
-            self.send_packet(self.frame_sizes[0], checksum_test=True)
+                l4csum_error = self.stop_and_get_l4csum_errors()
 
-            l4csum_error = self.stop_and_get_l4csum_errors()
+                # Check the l4 checksum errors reported for Rx port
+                self.verify(1 == int(l4csum_error[1]),
+                           "Wrong l4 checksum error count using rxfreet=%d (expected 1, reported %s)" %
+                           (rxfreet_value, l4csum_error[1]))
 
-            # Check the l4 checksum errors reported for Rx port
-            self.verify(1 == int(l4csum_error[1]),
-                        "Wrong l4 checksum error count using rxfreet=%d (expected 1, reported %s)" %
-                        (rxfreet_value, l4csum_error[1]))
+                self.dut.send_expect("quit", "# ", 30)
+                sleep(5)
 
-            self.dut.send_expect("quit", "# ", 30)
-            sleep(5)
+	else:
+	        for rxfreet_value in self.rxfreet_values:
+	
+        	    self.pmdout.start_testpmd("1S/2C/1T", "--portmask=%s --enable-rx-cksum --disable-hw-vlan --disable-rss --rxd=1024 --txd=1024 --rxfreet=%d" % ( port_mask, rxfreet_value), socket=self.ports_socket)
+	            self.dut.send_expect("set fwd csum", "testpmd> ")
+	            self.dut.send_expect("start", "testpmd> ")
+
+        	    self.send_packet(self.frame_sizes[0], checksum_test=True)
+
+	            l4csum_error = self.stop_and_get_l4csum_errors()
+
+	            # Check the l4 checksum errors reported for Rx port
+        	    self.verify(1 == int(l4csum_error[1]),
+	                        "Wrong l4 checksum error count using rxfreet=%d (expected 1, reported %s)" %
+        	                (rxfreet_value, l4csum_error[1]))
+
+	            self.dut.send_expect("quit", "# ", 30)
+        	    sleep(5)
 
     def test_packet_checking(self):
         """
